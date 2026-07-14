@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+#
+# Automates the poppler upgrade flow (README "Upgrading", steps 2-7).
+#
+# Full flow:
+#   1. Bump `ARG version=` in the Dockerfile          (manual, before)
+#   2. Run bin/upgrade                                 (this script)
+#   3. Update CHANGELOG.md and commit                  (manual, after)
+#
+# This script builds the image, extracts the freshly built poppler .deb into
+# the repo root, removes the previous .deb, and points bin/compile at the new
+# one.
+set -euo pipefail
+
+IMAGE=heroku-buildpack-poppler:latest
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+VERSION="$(grep -oE '^ARG version=[0-9.]+' Dockerfile | head -1 | cut -d= -f2)"
+
+echo "==> Building $IMAGE (poppler ${VERSION:-unknown})"
+docker build . -t "$IMAGE" --platform=linux/amd64
+
+echo "==> Locating built .deb inside the image"
+DEB="$(docker run --rm "$IMAGE" bash -lc 'ls -1 /poppler/build/*.deb 2>/dev/null' \
+  | tr -d '\r' | xargs -r -n1 basename | head -1)"
+if [ -z "$DEB" ]; then
+  echo "ERROR: no .deb found in /poppler/build inside the image" >&2
+  exit 1
+fi
+echo "    found $DEB"
+
+echo "==> Extracting $DEB into the repo"
+CID="$(docker create "$IMAGE")"
+trap 'docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+docker cp "$CID:/poppler/build/$DEB" "$ROOT/$DEB"
+docker rm "$CID" >/dev/null
+trap - EXIT
+
+echo "==> Removing stale poppler .deb(s)"
+shopt -s nullglob
+for f in poppler_*_amd64.deb; do
+  [ "$f" = "$DEB" ] && continue
+  echo "    rm $f"
+  rm -f "$f"
+done
+shopt -u nullglob
+
+echo "==> Pointing bin/compile at $DEB"
+sed -i.bak -E "s|^PKG=.*|PKG=$DEB|" bin/compile && rm -f bin/compile.bak
+
+echo
+echo "Done. Now:"
+echo "  - Update CHANGELOG.md for this version"
+echo "  - Review & commit: $DEB, bin/compile, Dockerfile"

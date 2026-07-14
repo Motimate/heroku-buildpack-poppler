@@ -2,9 +2,19 @@
 
 BUILD_DIR=$1
 
-PKG=poppler_25.03.0-1_amd64.deb
+PKG=poppler_26.04.0-1_amd64.deb
 
 echo "Extracting $PKG..."
 mkdir -p $BUILD_DIR/.apt
 dpkg -x "$PKG" $BUILD_DIR/.apt/
+
+# Put the extracted poppler ahead of the stack's own poppler-utils (heroku-22
+# ships 22.02.0) at runtime, and point the dynamic linker at the bundled libs.
+# Without this, `pdftohtml` etc. resolve to /usr/bin (the system version).
+mkdir -p $BUILD_DIR/.profile.d
+cat > $BUILD_DIR/.profile.d/000_poppler.sh <<'PROFILE'
+export PATH="$HOME/.apt/usr/bin:$PATH"
+export LD_LIBRARY_PATH="$HOME/.apt/usr/lib/x86_64-linux-gnu:$HOME/.apt/usr/lib:$LD_LIBRARY_PATH"
+PROFILE
+
 echo "Done"
