@@ -17,11 +17,15 @@ Reduce number of cores used for `make` in Dockerfile, eg.
 
 ## Upgrading
 
-1. Update `version` in Dockerfile
-2. `docker build . -t heroku-buildpack-poppler:latest --platform=linux/amd64`
-3. `docker run --rm -it heroku-buildpack-poppler:latest bash` and `cd poppler/build && ls -la` and note the name of the poppler .deb file (eg. `poppler_25.03.0-1_amd64.deb`)
-4. `docker create --name temp-container heroku-buildpack-poppler`
-5. `docker cp temp-container:/poppler/build/poppler_25.03.0-1_amd64.deb .`
-6. `docker rm temp-container`
-7. Update `bin/compile` with the new .deb file
+1. Update `version` in the `Dockerfile`.
+2. Run `bin/upgrade`. This builds the image, extracts the freshly built poppler
+   `.deb` into the repo, removes the previous `.deb`, and updates `bin/compile`
+   to point at the new one.
+3. Update `CHANGELOG.md` for the new version and commit the changes
+   (the new `.deb`, `bin/compile`, and `Dockerfile`).
+
+> Note: the build target is `heroku-22`, which constrains how new poppler can
+> be (see the comments in the `Dockerfile`). Security patches carried on top of
+> the pinned release live in `patches/` and are applied at build time; see
+> `CHANGELOG.md` for which CVEs each version addresses.
 
